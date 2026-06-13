@@ -237,6 +237,21 @@ Reviewing the source code reveals:
 - A hardcoded API key
 - A hidden administrative function named `ops._admin_dump`
 
+The source code reveals a hardcoded API key and a hidden administrative function.
+
+```python
+opsmcp_secret_key_4f5a6b7c8d9e0f1a
+
+elif tool_name == "ops._admin_dump":
+    target = args.get('target', '')
+    confirm = args.get('confirm', False)
+
+    if target == "ssh_keys":
+        with open('/root/.ssh/id_rsa', 'r') as f:
+            key_data = f.read()
+```
+
+
 ![alt text](<HTB/Screenshot/Screenshot 2026-06-13 162328.png>)
 
 ### Dump Root SSH Key
@@ -262,3 +277,21 @@ ssh -i root_key root@10.129.3.57
 ```
 
 A root shell is obtained.
+![alt text](<HTB/Screenshot/Screenshot 2026-06-13 162837.png>)
+
+### Root Flag
+
+```bash
+cat /root/root.txt
+```
+![alt text](<HTB/Screenshot/Screenshot 2026-06-13 162905.png>)
+
+#### Root Flag: `f08364d99ace8798681925311bf24d78`
+
+---
+
+# Flag
+| Flag | Description |
+| ----------- | ----------- |
+| User | 9cfd5dc906d5b588b7859424e6e0421a |
+| Root | f08364d99ace8798681925311bf24d78 |
